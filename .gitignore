@@ -8,3 +8,5 @@ results/*.parquet
 figures/*.png
 results/*.npy
 results/*.json
+results/*.pkl
+results/*.txt

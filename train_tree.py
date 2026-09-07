@@ -43,7 +43,7 @@ for age_numeric in (False, True):
 
     print(f"\n=== {label} ===")
     print(f"{'depth':>5} {'min_leaf':>9} {'nodes':>7} {'thresh':>8} "
-          f"{'prec':>7} {'recall':>7} {'F1':>7} {'fit s':>7}")
+          f"{'prec':>7} {'recall':>7} {'val F1':>7} {'train F1':>8} {'fit s':>7}")
 
     for max_depth in DEPTHS:
         for min_samples_leaf in MIN_LEAVES:
@@ -56,15 +56,23 @@ for age_numeric in (False, True):
             threshold, f1 = best_threshold(y_val, proba)
             precision, recall, _ = prf(y_val, (proba >= threshold).astype(int))
 
+            # the same tree scored on the data it was fitted on, at the same
+            # threshold. Two curves that separate as depth grows is what
+            # overfitting looks like; the validation curve alone only shows
+            # where to stop, not why.
+            train_proba = predict_proba(tree, Xn_fit, Xc_fit)
+            _, _, train_f1 = prf(y_fit, (train_proba >= threshold).astype(int))
+
             rows.append({"age_numeric": age_numeric, "max_depth": max_depth,
                          "min_samples_leaf": min_samples_leaf,
                          "nodes": count_nodes(tree), "depth_reached": tree_depth(tree),
                          "threshold": threshold, "precision": precision,
-                         "recall": recall, "f1": f1, "fit_seconds": fit_s})
+                         "recall": recall, "f1": f1, "train_f1": train_f1,
+                         "fit_seconds": fit_s})
 
             print(f"{max_depth:>5} {min_samples_leaf:>9} {count_nodes(tree):>7} "
                   f"{threshold:>8.4f} {precision:>7.4f} {recall:>7.4f} {f1:>7.4f} "
-                  f"{fit_s:>7.1f}")
+                  f"{train_f1:>8.4f} {fit_s:>7.1f}")
 
     grid = pd.DataFrame([r for r in rows if r["age_numeric"] == age_numeric])
     best = grid.loc[grid["f1"].idxmax()]
@@ -78,7 +86,8 @@ for age_numeric in (False, True):
         "val_recall": float(best["recall"]),
     }
     print(f"best: depth {int(best['max_depth'])}, min_leaf {int(best['min_samples_leaf'])}, "
-          f"threshold {best['threshold']:.4f}, validation F1 {best['f1']:.4f}")
+          f"threshold {best['threshold']:.4f}, validation F1 {best['f1']:.4f} "
+          f"(train F1 {best['train_f1']:.4f})")
 
 pd.DataFrame(rows).to_csv("results/tuning.csv", index=False)
 

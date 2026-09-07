@@ -282,3 +282,67 @@ def count_leaves(node):
     if node.is_leaf:
         return 1
     return count_leaves(node.left) + count_leaves(node.right)
+
+
+def feature_importances(node, normalise=True):
+    """Total impurity decrease attributable to each feature, weighted by how
+    many training rows reached the splitting node.
+
+    This is the same definition sklearn uses for `feature_importances_`: a split
+    counts for more when it is made high in the tree where it separates many
+    rows, so a weak split at the root can outrank a strong one in a small
+    branch. `Split.gain` is already the parent impurity minus the size-weighted
+    child impurity, so the node's contribution is just that gain scaled by its
+    share of the training set.
+
+    Returned normalised to sum to 1, which is what makes the numbers comparable
+    across models rather than across-the-board larger for a deeper tree.
+    """
+    total = node.counts.sum()
+    scores = {}
+
+    def walk(n):
+        if n.is_leaf:
+            return
+        share = n.counts.sum() / total
+        scores[n.split.name] = scores.get(n.split.name, 0.0) + share * n.split.gain
+        walk(n.left)
+        walk(n.right)
+
+    walk(node)
+    if normalise:
+        s = sum(scores.values())
+        if s:
+            scores = {k: v / s for k, v in scores.items()}
+    return dict(sorted(scores.items(), key=lambda kv: -kv[1]))
+
+
+def describe(node):
+    """One-line description of a node: its test, or its leaf distribution."""
+    n = int(node.counts.sum())
+    rate = node.counts[1] / n if n else 0.0
+    if node.is_leaf:
+        return f"leaf  n={n:,}  {100 * rate:.1f}% readmitted"
+    test = (f"{node.split.name} <= {node.split.value:g}"
+            if node.split.kind == "numeric"
+            else f"{node.split.name} == {node.split.value}")
+    return f"{test}  (gain {node.split.gain:.5f}, n={n:,}, {100 * rate:.1f}% readmitted)"
+
+
+def render_tree(node, max_depth=3, _prefix="", _depth=0, _lines=None):
+    """Plain-text render of the top of the tree.
+
+    Only the first few levels are legible on a page -- the tuned tree has 151
+    nodes -- and the top levels are the ones carrying most of the signal anyway.
+    Left branch is the True side of the test.
+    """
+    if _lines is None:
+        _lines = [describe(node)]
+    if node.is_leaf or _depth >= max_depth:
+        return "\n".join(_lines)
+    for child, is_last, label in ((node.left, False, "T"), (node.right, True, "F")):
+        elbow = "`--" if is_last else "|--"
+        _lines.append(f"{_prefix}{elbow} {label}: {describe(child)}")
+        render_tree(child, max_depth, _prefix + ("    " if is_last else "|   "),
+                    _depth + 1, _lines)
+    return "\n".join(_lines)

@@ -19,7 +19,7 @@ from sklearn.metrics import roc_auc_score
 from sklearn.tree import DecisionTreeClassifier
 
 from descision_tree import (NUMERIC_COLS, build, count_leaves, count_nodes,
-                            predict_proba, tree_depth)
+                            predict_proba, render_tree, tree_depth)
 
 sys.setrecursionlimit(10000)
 
@@ -41,7 +41,8 @@ y = train["readmitted_binary"].to_numpy(dtype=int)
 # implementation splits them as nominal. That would compare two different
 # algorithms, not two implementations of one.
 onehot = pd.get_dummies(train[NUMERIC_COLS + CATEGORICAL_COLS],
-                        columns=CATEGORICAL_COLS).to_numpy(dtype=float)
+                        columns=CATEGORICAL_COLS)
+onehot_X = onehot.to_numpy(dtype=float)
 
 
 def metrics(proba, y):
@@ -70,8 +71,8 @@ for max_depth in range(1, 6):
     sk = DecisionTreeClassifier(max_depth=max_depth, criterion="gini",
                                 min_samples_leaf=MIN_SAMPLES_LEAF,
                                 random_state=SEED)
-    sk.fit(onehot, y)
-    sk_proba = sk.predict_proba(onehot)[:, 1]
+    sk.fit(onehot_X, y)
+    sk_proba = sk.predict_proba(onehot_X)[:, 1]
     sk_acc, sk_auc = metrics(sk_proba, y)
 
     print(f"{max_depth:>5}  {'mine':<8} {count_nodes(mine):>6} {count_leaves(mine):>7} "
@@ -107,3 +108,56 @@ print(f"  mine     {count_nodes(cat_mine):>3} nodes  auc {cat_auc:.4f}")
 print(f"  sklearn  {cat_sk.tree_.node_count:>3} nodes  auc {cat_sk_auc:.4f}")
 assert abs(cat_auc - cat_sk_auc) < 0.01, "categorical recursion diverges"
 print("\ncategorical recursion matches")
+
+
+# --- feature importances ------------------------------------------------------
+# sklearn reports one importance per one-hot column; this implementation reports
+# one per original attribute. Summing the dummies of a column back together is
+# the like-for-like comparison, and it is only valid because a dummy split at
+# `<= 0.5` is the same test as this implementation's `x == v`.
+
+from descision_tree import feature_importances  # noqa: E402
+
+
+def source_column(dummy, columns):
+    """Map a get_dummies column back to the attribute it came from.
+
+    Longest match wins, and an underscore is required before the level: the
+    dataset contains both `glyburide` and `glyburide-metformin`, so a bare
+    prefix test would fold the second into the first.
+    """
+    candidates = [c for c in columns
+                  if dummy == c or dummy.startswith(c + "_")]
+    assert candidates, f"no source column for dummy {dummy!r}"
+    return max(candidates, key=len)
+
+
+DEPTH = 5
+mine = build(X_num, X_cat, y, NUMERIC_COLS, CATEGORICAL_COLS,
+             max_depth=DEPTH, min_samples_leaf=MIN_SAMPLES_LEAF)
+sk = DecisionTreeClassifier(max_depth=DEPTH, criterion="gini",
+                            min_samples_leaf=MIN_SAMPLES_LEAF,
+                            random_state=SEED).fit(onehot_X, y)
+
+my_imp = feature_importances(mine)
+
+all_cols = NUMERIC_COLS + CATEGORICAL_COLS
+sk_imp = {}
+for dummy, value in zip(onehot.columns, sk.feature_importances_):
+    if value > 0:
+        col = source_column(dummy, all_cols)
+        sk_imp[col] = sk_imp.get(col, 0.0) + float(value)
+
+print(f"\nfeature importances at depth {DEPTH}")
+print(f"  {'attribute':<28} {'mine':>9} {'sklearn':>9} {'diff':>10}")
+worst = 0.0
+for name in sorted(set(my_imp) | set(sk_imp), key=lambda k: -my_imp.get(k, 0)):
+    a, b = my_imp.get(name, 0.0), sk_imp.get(name, 0.0)
+    worst = max(worst, abs(a - b))
+    print(f"  {name:<28} {a:>9.4f} {b:>9.4f} {a - b:>10.2e}")
+
+assert worst < 1e-9, f"importances diverge by {worst:.2e}"
+print(f"\nimportances match to {worst:.1e}")
+
+print("\ntop of the tree:\n")
+print(render_tree(mine, max_depth=2))

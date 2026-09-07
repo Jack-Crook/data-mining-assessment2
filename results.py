@@ -80,31 +80,28 @@ fig.savefig("figures/confusion_matrices.png", dpi=200)
 plt.close(fig)
 
 
-# --- Figure 2: depth vs validation F1 ----------------------------------------
+# --- Figure 2: depth vs F1, train against validation ------------------------
+# The validation curve alone shows where to stop; it does not show why. The two
+# curves separating as depth grows is what overfitting actually looks like.
 fig, ax = plt.subplots(figsize=(7, 4.2))
-# the two encodings track each other almost exactly, so the wider line is drawn
-# underneath: plotting them at equal weight would simply hide whichever went first
-for age_numeric, colour, width, label in ((True, ORANGE, 5, "age numeric"),
-                                          (False, BLUE, 2, "age nominal")):
-    g = (tuning_grid[tuning_grid["age_numeric"] == age_numeric]
-         .groupby("max_depth")["f1"].max())
-    ax.plot(g.index, g.values, color=colour, linewidth=width, marker="o",
-            markersize=5, label=label, solid_capstyle="round")
-    ax.annotate(label, (g.index[-1], g.values[-1]),
-                xytext=(9, 7 if age_numeric else -7), textcoords="offset points",
-                color=colour, fontsize=10, va="center")
+grid = tuning_grid[tuning_grid["age_numeric"] == cfg["age_numeric"]]
+for col, colour, label in (("train_f1", ORANGE, "train"),
+                           ("f1", BLUE, "validation")):
+    g = grid.groupby("max_depth")[col].max()
+    ax.plot(g.index, g.values, color=colour, linewidth=2, marker="o",
+            markersize=5, label=label)
+    ax.annotate(label, (g.index[-1], g.values[-1]), xytext=(9, 0),
+                textcoords="offset points", color=colour, fontsize=10, va="center")
 
 best_depth = cfg["max_depth"]
 ax.axvline(best_depth, color=MUTED, linewidth=1, linestyle="--", zorder=0)
 ax.annotate(f"selected depth {best_depth}", (best_depth, ax.get_ylim()[0]),
             xytext=(4, 8), textcoords="offset points", color=INK_2, fontsize=9)
 ax.set_xlabel("maximum depth")
-ax.set_ylabel("best validation F1 (positive class)")
-ax.set_title("Depth vs. validation F1 — best over min_samples_leaf at each depth",
+ax.set_ylabel("F1 (positive class)")
+ax.set_title("Depth vs. F1 — the gap between the curves is the overfitting",
              color=INK, fontsize=12, pad=10)
-# note the y-axis is zoomed: the gap between the two encodings is ~0.0005, which
-# is noise. The shape of the curve is the finding here, not the gap.
-ax.set_xlim(1, tuning_grid["max_depth"].max() + 2.5)
+ax.set_xlim(1, tuning_grid["max_depth"].max() + 3)
 fig.tight_layout()
 fig.savefig("figures/depth_vs_f1.png", dpi=200)
 plt.close(fig)
@@ -194,3 +191,112 @@ print(f"\n  difference in validation F1: "
 
 print("\nwrote figures/confusion_matrices.png, depth_vs_f1.png, "
       "threshold_sweep.png, precision_recall.png")
+
+
+# --- Figure 5: feature importances -------------------------------------------
+# One series, so magnitude is carried by bar length and a single hue; the two
+# models agree to within floating-point noise, so plotting both would draw the
+# same bar twice.
+imp = pd.read_csv("results/importances.csv").head(12).iloc[::-1]
+fig, ax = plt.subplots(figsize=(7.5, 4.6))
+ax.barh(imp["feature"], imp["mine"], color=BLUE, height=0.62)
+for name, value in zip(imp["feature"], imp["mine"]):
+    ax.annotate(f"{value:.3f}", (value, name), xytext=(5, 0),
+                textcoords="offset points", va="center", color=INK_2, fontsize=9)
+ax.set_xlabel("share of total impurity decrease")
+ax.set_xlim(0, imp["mine"].max() * 1.18)
+ax.grid(axis="y", visible=False)
+ax.set_title("Which attributes the tree actually uses\n"
+             "(identical for both implementations, agreeing to 8.5e-15)",
+             color=INK, fontsize=12, pad=10)
+fig.tight_layout()
+fig.savefig("figures/feature_importances.png", dpi=200)
+plt.close(fig)
+
+
+# --- Figure 6: the top of the tree -------------------------------------------
+# Evidence for the interpretability argument made when the algorithm was chosen:
+# the rules are readable, and each node states the readmission rate beneath it.
+import pickle  # noqa: E402
+import textwrap  # noqa: E402
+
+with open("results/tree.pkl", "rb") as fh:
+    tree = pickle.load(fh)
+
+RENDER_DEPTH = 3
+
+
+def layout(node, depth, positions, counter):
+    """Leaves of the rendered portion get consecutive x slots; every parent
+    sits at the midpoint of its two children."""
+    if node.is_leaf or depth >= RENDER_DEPTH:
+        x = counter[0]
+        counter[0] += 1
+    else:
+        x = (layout(node.left, depth + 1, positions, counter)
+             + layout(node.right, depth + 1, positions, counter)) / 2
+    positions[id(node)] = (x, depth)
+    return x
+
+
+def node_label(node):
+    n = int(node.counts.sum())
+    rate = node.counts[1] / n
+    if node.is_leaf:
+        head = "leaf"
+    elif node.split.kind == "numeric":
+        head = f"{node.split.name}\n<= {node.split.value:g}"
+    else:
+        head = f"{node.split.name}\n== {node.split.value}"
+    head = "\n".join(textwrap.wrap(head, 22, break_long_words=False))
+    return f"{head}\nn={n:,} · {100 * rate:.1f}%", rate
+
+
+positions, counter = {}, [0]
+layout(tree, 0, positions, counter)
+
+fig, ax = plt.subplots(figsize=(14, 7))
+cmap = plt.get_cmap("Blues")
+
+
+def draw(node, depth):
+    x, _ = positions[id(node)]
+    label, rate = node_label(node)
+    shade = min(rate / 0.35, 1.0)
+    ax.text(x, -depth, label, ha="center", va="center", fontsize=7.5,
+            color="#ffffff" if shade > 0.6 else INK,
+            bbox=dict(boxstyle="round,pad=0.45", facecolor=cmap(0.12 + 0.75 * shade),
+                      edgecolor="none"))
+    if node.is_leaf or depth >= RENDER_DEPTH:
+        return
+    for child, branch in ((node.left, "true"), (node.right, "false")):
+        cx, _ = positions[id(child)]
+        ax.plot([x, cx], [-depth - 0.28, -depth - 0.72], color=MUTED,
+                linewidth=1, zorder=0)
+        ax.annotate(branch, ((x + cx) / 2, -depth - 0.5), fontsize=7,
+                    color=INK_2, ha="center", va="center",
+                    bbox=dict(boxstyle="round,pad=0.15", facecolor=SURFACE,
+                              edgecolor="none"))
+        draw(child, depth + 1)
+
+
+draw(tree, 0)
+ax.set_xlim(-0.7, counter[0] - 0.3)
+ax.set_ylim(-RENDER_DEPTH - 0.6, 0.6)
+ax.axis("off")
+ax.set_title(f"Top {RENDER_DEPTH} levels of the tuned tree "
+             f"(depth {cfg['max_depth']}, {int(sel[sel.model == 'mine'].iloc[0]['nodes'])} nodes total)\n"
+             "shading is the readmission rate among the rows reaching each node",
+             color=INK, fontsize=12, pad=14)
+fig.tight_layout()
+fig.savefig("figures/tree_top_levels.png", dpi=200)
+plt.close(fig)
+
+print("\n\nTable 4 — feature importances (top 12)\n")
+print(pd.read_csv("results/importances.csv").head(12).to_string(
+    index=False, formatters={"mine": "{:.4f}".format, "sklearn": "{:.4f}".format}))
+
+print("\n\nTop 3 levels of the tuned tree\n")
+print(open("results/tree.txt").read())
+
+print("wrote figures/feature_importances.png, tree_top_levels.png")

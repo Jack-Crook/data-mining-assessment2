@@ -21,7 +21,8 @@ import pandas as pd
 from sklearn.metrics import roc_auc_score
 from sklearn.tree import DecisionTreeClassifier
 
-from descision_tree import build, count_leaves, count_nodes, predict_proba, tree_depth
+from descision_tree import (build, count_leaves, count_nodes, feature_importances,
+                            predict_proba, render_tree, tree_depth)
 from tuning import TARGET, confusion, feature_columns, matrices, prf
 
 sys.setrecursionlimit(20000)
@@ -94,6 +95,31 @@ for name in ("nominal", "numeric"):
         np.save("results/test_proba_mine.npy", mine_proba)
         np.save("results/test_proba_sklearn.npy", sk_proba)
         np.save("results/test_y.npy", y_te)
+
+        # importances are compared per original attribute, so sklearn's one-hot
+        # columns are summed back to the column they were expanded from
+        mine_imp = feature_importances(tree)
+        sk_imp = {}
+        for dummy, value in zip(tr_oh.columns, sk.feature_importances_):
+            if value > 0:
+                col = max((c for c in numeric + categorical
+                           if dummy == c or dummy.startswith(c + "_")), key=len)
+                sk_imp[col] = sk_imp.get(col, 0.0) + float(value)
+
+        imp = pd.DataFrame([{"feature": f, "mine": v, "sklearn": sk_imp.get(f, 0.0)}
+                            for f, v in mine_imp.items()])
+        imp.to_csv("results/importances.csv", index=False)
+        worst = float((imp["mine"] - imp["sklearn"]).abs().max())
+        print(f"  feature importances agree to {worst:.1e}")
+        assert worst < 1e-9, "importances diverge on the full model"
+
+        with open("results/tree.txt", "w") as fh:
+            fh.write(render_tree(tree, max_depth=3) + "\n")
+        print("  wrote results/tree.txt (top 3 levels)")
+
+        import pickle
+        with open("results/tree.pkl", "wb") as fh:
+            pickle.dump(tree, fh)
 
 df = pd.DataFrame(results)
 df.to_csv("results/benchmark.csv", index=False)
