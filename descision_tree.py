@@ -50,11 +50,12 @@ NUMERIC_COLS = [
 # integer-coded *categories*, not numbers. They are deliberately not in this list.
 
 
-def best_numeric_split(x, y):
+def best_numeric_split(x, y, min_samples_leaf=1):
     """Best threshold for a single numeric feature.
 
     Returns (threshold, impurity_decrease), or (None, 0.0) when no valid split
-    exists (fewer than two rows, or every value identical).
+    exists (fewer than two rows, every value identical, or no cut leaving
+    min_samples_leaf rows on both sides).
     """
     n = len(y)
     if n < 2:
@@ -76,8 +77,13 @@ def best_numeric_split(x, y):
     weighted = (n_left * 2 * p_left * (1 - p_left)
                 + n_right * 2 * p_right * (1 - p_right)) / n
 
-    # a cut between two identical values is not a real split
-    valid = x_sorted[:-1] < x_sorted[1:]
+    # A cut between two identical values is not a real split, and a cut leaving
+    # fewer than min_samples_leaf rows on a side is not a legal one. Both are
+    # excluded here, inside the search, rather than by rejecting the winner
+    # afterwards -- that would turn a node into a leaf when a legal split existed.
+    valid = ((x_sorted[:-1] < x_sorted[1:])
+             & (n_left >= min_samples_leaf)
+             & (n_right >= min_samples_leaf))
     if not valid.any():
         return None, 0.0
     weighted = np.where(valid, weighted, np.inf)
@@ -87,11 +93,11 @@ def best_numeric_split(x, y):
     return threshold, gini(y) - weighted[i]
 
 
-def best_numeric_feature(X, y, feature_names):
+def best_numeric_feature(X, y, feature_names, min_samples_leaf=1):
     """Search every numeric feature. Returns ((index, name, threshold), gain)."""
     best, best_gain = None, 0.0
     for j, name in enumerate(feature_names):
-        threshold, gain = best_numeric_split(X[:, j], y)
+        threshold, gain = best_numeric_split(X[:, j], y, min_samples_leaf)
         if threshold is not None and gain > best_gain:
             best, best_gain = (j, name, threshold), gain
     return best, best_gain
@@ -108,7 +114,7 @@ class Split:
     gain: float
 
 
-def best_categorical_split(x, y):
+def best_categorical_split(x, y, min_samples_leaf=1):
     """Best one-vs-rest split for a single categorical feature.
 
     Splits are `x == value` vs everything else, which keeps every node binary and
@@ -134,22 +140,30 @@ def best_categorical_split(x, y):
     weighted = (n_in * 2 * p_in * (1 - p_in)
                 + n_out * 2 * p_out * (1 - p_out)) / n
 
+    # same reasoning as the numeric sweep: a category too small to be its own
+    # leaf is not a candidate, so it is excluded before the argmin
+    valid = (n_in >= min_samples_leaf) & (n_out >= min_samples_leaf)
+    if not valid.any():
+        return None, 0.0
+    weighted = np.where(valid, weighted, np.inf)
+
     i = int(np.argmin(weighted))
     return values[i], gini(y) - weighted[i]
 
 
-def best_split(X_num, X_cat, y, numeric_names, categorical_names):
+def best_split(X_num, X_cat, y, numeric_names, categorical_names,
+               min_samples_leaf=1):
     """Search every feature of both kinds. Returns the winning Split, or None
     when no split yields a positive gain."""
     best = None
 
     for j, name in enumerate(numeric_names):
-        threshold, gain = best_numeric_split(X_num[:, j], y)
+        threshold, gain = best_numeric_split(X_num[:, j], y, min_samples_leaf)
         if threshold is not None and (best is None or gain > best.gain):
             best = Split("numeric", j, name, threshold, gain)
 
     for j, name in enumerate(categorical_names):
-        value, gain = best_categorical_split(X_cat[:, j], y)
+        value, gain = best_categorical_split(X_cat[:, j], y, min_samples_leaf)
         if value is not None and (best is None or gain > best.gain):
             best = Split("categorical", j, name, value, gain)
 
@@ -161,3 +175,110 @@ def apply_split(split, X_num, X_cat):
     if split.kind == "numeric":
         return X_num[:, split.feature] <= split.value
     return X_cat[:, split.feature] == split.value
+
+
+@dataclass
+class Node:
+    """One node of the tree.
+
+    `counts` is the class distribution of the training rows that reached this
+    node, not a majority label. Storing the distribution is what makes leaf
+    probabilities and a tuned decision threshold possible later -- at a 9.10%
+    positive rate a majority-vote leaf predicts "not readmitted" almost
+    everywhere, so the label alone would throw away the only information the
+    imbalance leaves us.
+    """
+
+    counts: np.ndarray          # [n_negative, n_positive]
+    split: "Split | None" = None
+    left: "Node | None" = None
+    right: "Node | None" = None
+
+    @property
+    def is_leaf(self):
+        return self.split is None
+
+
+def build(X_num, X_cat, y, numeric_names, categorical_names,
+          max_depth=None, min_samples_split=2, min_samples_leaf=1, depth=0):
+    """Recursively grow a binary tree. Returns the root Node.
+
+    Stops when the node is pure, the depth limit is hit, there are too few rows
+    to split, or no split yields a positive impurity decrease. The
+    min_samples_leaf rule is enforced inside the split search rather than here.
+    """
+    counts = np.bincount(y, minlength=2)
+    node = Node(counts=counts)
+
+    if counts[0] == 0 or counts[1] == 0:
+        return node
+    if max_depth is not None and depth >= max_depth:
+        return node
+    if len(y) < min_samples_split:
+        return node
+
+    split = best_split(X_num, X_cat, y, numeric_names, categorical_names,
+                       min_samples_leaf)
+    if split is None:
+        return node
+
+    mask = apply_split(split, X_num, X_cat)
+    node.split = split
+    node.left = build(X_num[mask], X_cat[mask], y[mask],
+                      numeric_names, categorical_names,
+                      max_depth, min_samples_split, min_samples_leaf, depth + 1)
+    node.right = build(X_num[~mask], X_cat[~mask], y[~mask],
+                       numeric_names, categorical_names,
+                       max_depth, min_samples_split, min_samples_leaf, depth + 1)
+    return node
+
+
+def _fill_proba(node, X_num, X_cat, idx, out):
+    """Push a block of rows down one node, splitting the block by the mask.
+
+    Rows travel in groups rather than one at a time: every row in a block takes
+    the same test, so one vectorised comparison routes the whole block. A
+    per-row walk in Python is fine once, but not across a depth sweep times a
+    threshold sweep.
+    """
+    if node.is_leaf:
+        total = node.counts.sum()
+        out[idx] = node.counts[1] / total if total else 0.0
+        return
+    mask = apply_split(node.split, X_num, X_cat)
+    _fill_proba(node.left, X_num[mask], X_cat[mask], idx[mask], out)
+    _fill_proba(node.right, X_num[~mask], X_cat[~mask], idx[~mask], out)
+
+
+def predict_proba(node, X_num, X_cat):
+    """P(readmitted within 30 days) per row, from the reached leaf's counts."""
+    n = X_num.shape[0]
+    out = np.empty(n, dtype=float)
+    _fill_proba(node, X_num, X_cat, np.arange(n), out)
+    return out
+
+
+def predict(node, X_num, X_cat, threshold=0.5):
+    """Hard 0/1 prediction. The threshold is tuned on validation, not left at
+    0.5 -- see the imbalance discussion in the report."""
+    return (predict_proba(node, X_num, X_cat) >= threshold).astype(int)
+
+
+def tree_depth(node):
+    """Longest root-to-leaf path. A single-node tree has depth 0."""
+    if node.is_leaf:
+        return 0
+    return 1 + max(tree_depth(node.left), tree_depth(node.right))
+
+
+def count_nodes(node):
+    """Total nodes, internal and leaf -- comparable to sklearn's tree_.node_count."""
+    if node.is_leaf:
+        return 1
+    return 1 + count_nodes(node.left) + count_nodes(node.right)
+
+
+def count_leaves(node):
+    if node.is_leaf:
+        return 1
+    return count_leaves(node.left) + count_leaves(node.right)
