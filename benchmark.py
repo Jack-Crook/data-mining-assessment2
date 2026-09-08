@@ -21,7 +21,7 @@ import pandas as pd
 from sklearn.metrics import roc_auc_score
 from sklearn.tree import DecisionTreeClassifier
 
-from descision_tree import (build, count_leaves, count_nodes, feature_importances,
+from decision_tree import (build, count_leaves, count_nodes, feature_importances,
                             predict_proba, render_tree, tree_depth)
 from tuning import TARGET, confusion, feature_columns, matrices, prf
 

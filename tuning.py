@@ -1,14 +1,14 @@
 """Shared plumbing for tuning and evaluation: feature matrices, the two `age`
 encodings, threshold selection, and the metric set the proposal committed to.
 
-Kept separate from descision_tree.py so the appendix listing of the algorithm
+Kept separate from decision_tree.py so the appendix listing of the algorithm
 itself stays free of experiment scaffolding.
 """
 
 import numpy as np
 import pandas as pd
 
-from descision_tree import NUMERIC_COLS
+from decision_tree import NUMERIC_COLS
 
 TARGET = "readmitted_binary"
 

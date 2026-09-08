@@ -14,7 +14,7 @@ import time
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
-from descision_tree import build, count_nodes, predict_proba, tree_depth
+from decision_tree import build, count_nodes, predict_proba, tree_depth
 from tuning import (TARGET, best_threshold, feature_columns, matrices, prf)
 
 sys.setrecursionlimit(20000)

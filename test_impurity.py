@@ -1,5 +1,5 @@
 import numpy as np
-from descision_tree import gini, weighted_impurity, impurity_decrease
+from decision_tree import gini, weighted_impurity, impurity_decrease
 
 pure = np.array([0, 0, 0, 0])
 half = np.array([0, 0, 1, 1])

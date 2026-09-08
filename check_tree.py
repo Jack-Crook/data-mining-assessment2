@@ -18,7 +18,7 @@ import pandas as pd
 from sklearn.metrics import roc_auc_score
 from sklearn.tree import DecisionTreeClassifier
 
-from descision_tree import (NUMERIC_COLS, build, count_leaves, count_nodes,
+from decision_tree import (NUMERIC_COLS, build, count_leaves, count_nodes,
                             predict_proba, render_tree, tree_depth)
 
 sys.setrecursionlimit(10000)
@@ -116,7 +116,7 @@ print("\ncategorical recursion matches")
 # the like-for-like comparison, and it is only valid because a dummy split at
 # `<= 0.5` is the same test as this implementation's `x == v`.
 
-from descision_tree import feature_importances  # noqa: E402
+from decision_tree import feature_importances  # noqa: E402
 
 
 def source_column(dummy, columns):

@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from sklearn.tree import DecisionTreeClassifier
 
-from descision_tree import NUMERIC_COLS, best_numeric_feature, best_split, gini
+from decision_tree import NUMERIC_COLS, best_numeric_feature, best_split, gini
 
 SEED = 42
 SUBSAMPLE = 5000
