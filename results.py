@@ -197,7 +197,11 @@ print("\nwrote figures/confusion_matrices.png, depth_vs_f1.png, "
 # One series, so magnitude is carried by bar length and a single hue; the two
 # models agree to within floating-point noise, so plotting both would draw the
 # same bar twice.
-imp = pd.read_csv("results/importances.csv").head(12).iloc[::-1]
+imp_all = pd.read_csv("results/importances.csv")
+# computed, not hardcoded: the agreement figure quoted in the title has to come
+# from the run that drew the figure, or a rerun silently invalidates the caption
+agreement = float((imp_all["mine"] - imp_all["sklearn"]).abs().max())
+imp = imp_all.head(12).iloc[::-1]
 fig, ax = plt.subplots(figsize=(7.5, 4.6))
 ax.barh(imp["feature"], imp["mine"], color=BLUE, height=0.62)
 for name, value in zip(imp["feature"], imp["mine"]):
@@ -207,7 +211,7 @@ ax.set_xlabel("share of total impurity decrease")
 ax.set_xlim(0, imp["mine"].max() * 1.18)
 ax.grid(axis="y", visible=False)
 ax.set_title("Which attributes the tree actually uses\n"
-             "(identical for both implementations, agreeing to 8.5e-15)",
+             f"(identical for both implementations, agreeing to {agreement:.1e})",
              color=INK, fontsize=12, pad=10)
 fig.tight_layout()
 fig.savefig("figures/feature_importances.png", dpi=200)
