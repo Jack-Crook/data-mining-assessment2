@@ -83,8 +83,8 @@ def threshold_sweep(y_true, proba):
 
 
 def best_threshold(y_true, proba):
-    """Threshold maximising positive-class F1. Ties break to the higher
-    threshold, i.e. the more conservative model."""
+    """Threshold maximising positive-class F1. Ties break to the lowest
+    threshold: the sweep is in ascending order and idxmax takes the first."""
     sweep = threshold_sweep(y_true, proba)
     best = sweep.loc[sweep["f1"].idxmax()]
     return float(best["threshold"]), float(best["f1"])
