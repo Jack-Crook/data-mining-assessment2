@@ -1,13 +1,4 @@
-"""Figures and tables for the report's results section.
-
-Reads only what the earlier scripts wrote (results/tuning.csv, benchmark.csv and
-the saved test probabilities); fits nothing, so the test set is not re-touched.
-
-Palette is the three-slot categorical set validated for all-pairs separation
-under deuteranopia and tritanopia. Every series is also direct-labelled, so
-identity never rests on colour alone, which matters for a report that may be
-printed in greyscale.
-"""
+"""Figures and tables for the report. Reads saved results only; fits nothing."""
 
 import json
 
@@ -47,9 +38,7 @@ BASE_RATE = y_test.mean()
 
 
 # --- Figure 1: confusion matrix ----------------------------------------------
-# Cells are shaded by row rate, not raw count: at 9% positive the true-negative
-# cell is two orders of magnitude larger than the rest, so shading by count
-# would render every other cell white and show nothing.
+# shade by row rate; by count the TN cell would wash out the rest
 def confusion_panel(ax, row, title):
     cm = np.array([[row["tn"], row["fp"]], [row["fn"], row["tp"]]])
     rates = cm / cm.sum(axis=1, keepdims=True)
@@ -81,8 +70,6 @@ plt.close(fig)
 
 
 # --- Figure 2: depth vs F1, train against validation ------------------------
-# The validation curve alone shows where to stop; it does not show why. The two
-# curves separating as depth grows is what overfitting actually looks like.
 fig, ax = plt.subplots(figsize=(7, 4.2))
 grid = tuning_grid[tuning_grid["age_numeric"] == cfg["age_numeric"]]
 for col, colour, label in (("train_f1", ORANGE, "train"),
@@ -112,8 +99,7 @@ from tuning import threshold_sweep  # noqa: E402
 
 sweep = threshold_sweep(y_test, proba_mine).sort_values("threshold")
 fig, ax = plt.subplots(figsize=(7, 4.2))
-# F1 and recall converge at the right-hand end, so the label offsets are
-# staggered rather than all centred on their line
+# stagger labels where the lines meet
 for col, colour, dy, label in (("precision", BLUE, 0, "precision"),
                                ("f1", AQUA, 9, "F1"),
                                ("recall", ORANGE, -9, "recall")):
@@ -143,8 +129,7 @@ plt.close(fig)
 
 
 # --- Figure 4: precision-recall curve -----------------------------------------
-# sklearn is drawn thick underneath and this implementation thin on top: the
-# point of the figure is that the two curves coincide exactly.
+# sklearn thick underneath, mine thin on top, to show they coincide
 fig, ax = plt.subplots(figsize=(7, 4.2))
 for proba, colour, width, label in ((proba_sk, ORANGE, 5, "sklearn"),
                                     (proba_mine, BLUE, 2, "from-scratch tree")):
@@ -194,12 +179,8 @@ print("\nwrote figures/confusion_matrices.png, depth_vs_f1.png, "
 
 
 # --- Figure 5: feature importances -------------------------------------------
-# One series, so magnitude is carried by bar length and a single hue; the two
-# models agree to within floating-point noise, so plotting both would draw the
-# same bar twice.
 imp_all = pd.read_csv("results/importances.csv")
-# computed, not hardcoded: the agreement figure quoted in the title has to come
-# from the run that drew the figure, or a rerun silently invalidates the caption
+# computed from this run so the title stays accurate
 agreement = float((imp_all["mine"] - imp_all["sklearn"]).abs().max())
 imp = imp_all.head(12).iloc[::-1]
 fig, ax = plt.subplots(figsize=(7.5, 4.6))
@@ -219,8 +200,6 @@ plt.close(fig)
 
 
 # --- Figure 6: the top of the tree -------------------------------------------
-# Evidence for the interpretability argument made when the algorithm was chosen:
-# the rules are readable, and each node states the readmission rate beneath it.
 import pickle  # noqa: E402
 import textwrap  # noqa: E402
 
@@ -231,8 +210,7 @@ RENDER_DEPTH = 3
 
 
 def layout(node, depth, positions, counter):
-    """Leaves of the rendered portion get consecutive x slots; every parent
-    sits at the midpoint of its two children."""
+    """Leaves get consecutive x slots; each parent sits between its children."""
     if node.is_leaf or depth >= RENDER_DEPTH:
         x = counter[0]
         counter[0] += 1

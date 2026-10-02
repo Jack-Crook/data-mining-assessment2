@@ -23,7 +23,7 @@ stump = DecisionTreeClassifier(max_depth=1, criterion="gini", random_state=SEED)
 stump.fit(X, y)
 sk_feature = NUMERIC_COLS[stump.tree_.feature[0]]
 sk_threshold = stump.tree_.threshold[0]
-# sklearn reports weighted impurity decrease scaled by the node's share of the tree
+# gain = parent impurity - size-weighted child impurity
 sk_gain = stump.tree_.impurity[0] - (
     stump.tree_.weighted_n_node_samples[1] * stump.tree_.impurity[1]
     + stump.tree_.weighted_n_node_samples[2] * stump.tree_.impurity[2]
@@ -43,8 +43,7 @@ X_cat = train[CATEGORICAL_COLS].astype(str).to_numpy()
 split = best_split(X, X_cat, y, NUMERIC_COLS, CATEGORICAL_COLS)
 print(f"\nmine     {split.kind:<12} {split.name} = {split.value}   gain {split.gain:.6f}")
 
-# one-hot encoding a categorical and splitting a dummy at <= 0.5 IS one-vs-rest,
-# so the comparison stays exact across both feature kinds
+# a one-hot dummy split at <= 0.5 is the same test as x == v
 onehot = pd.get_dummies(train[NUMERIC_COLS + CATEGORICAL_COLS],
                         columns=CATEGORICAL_COLS)
 stump = DecisionTreeClassifier(max_depth=1, criterion="gini", random_state=SEED)
@@ -61,8 +60,7 @@ print("\ncombined search matches")
 
 
 # --- categorical only ---------------------------------------------------------
-# the combined search above happened to pick a numeric feature, so force a
-# categorical-only search to verify that path against sklearn independently
+# the combined search picked a numeric feature, so test categoricals alone
 
 empty_num = np.empty((len(y), 0))
 cat_split = best_split(empty_num, X_cat, y, [], CATEGORICAL_COLS)

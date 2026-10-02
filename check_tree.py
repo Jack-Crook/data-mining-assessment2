@@ -1,15 +1,4 @@
-"""Verify the recursive build against sklearn on the same 5,000-row subsample.
-
-check_split.py established that a single split matches sklearn to 1e-9. This
-checks that recursing on it produces the same *tree*: same shape, same metrics,
-at matched hyperparameters, before any optimisation work starts.
-
-The two searches consider the same candidate set at every node (a one-hot
-dummy tested at `<= 0.5` is precisely the one-vs-rest test `x == v`, and the
-numeric sweeps are identical), so agreement should be exact, not approximate.
-Tie-breaking between equal-gain splits is the one place they may legitimately
-diverge.
-"""
+"""Check the full recursive build against sklearn on a 5,000-row subsample."""
 
 import sys
 
@@ -35,23 +24,14 @@ X_num = train[NUMERIC_COLS].to_numpy(dtype=float)
 X_cat = train[CATEGORICAL_COLS].astype(str).to_numpy()
 y = train["readmitted_binary"].to_numpy(dtype=int)
 
-# one-hot is what makes the comparison honest: admission_type_id,
-# discharge_disposition_id and admission_source_id are integer-coded categories,
-# and handed to sklearn raw they would be split as ordered numerics while this
-# implementation splits them as nominal. That would compare two different
-# algorithms, not two implementations of one.
+# one-hot, so sklearn treats the *_id codes as categories rather than numbers
 onehot = pd.get_dummies(train[NUMERIC_COLS + CATEGORICAL_COLS],
                         columns=CATEGORICAL_COLS)
 onehot_X = onehot.to_numpy(dtype=float)
 
 
 def metrics(proba, y):
-    """Accuracy at the majority-vote threshold, plus threshold-free AUC.
-
-    F1 is deliberately not used here: at a 9% positive rate every tree of this
-    depth predicts all-negative at 0.5, so F1 is 0.0 for both models and
-    compares nothing. AUC ranks the probabilities and stays informative.
-    """
+    """Accuracy at 0.5 and AUC. F1 is 0 for both at 0.5, so it compares nothing."""
     return ((proba >= 0.5).astype(int) == y).mean(), roc_auc_score(y, proba)
 
 
@@ -87,9 +67,7 @@ for max_depth in range(1, 6):
 print("\nstructure and ranking match at every depth")
 
 # --- categorical-only path ----------------------------------------------------
-# The combined search keeps choosing numeric features, so without forcing this
-# the categorical branch of the recursion is never actually compared against
-# anything. A test that never reaches the branch is not a passing test.
+# the combined search picks numeric features, so test categoricals alone
 
 empty_num = np.empty((len(y), 0))
 cat_mine = build(empty_num, X_cat, y, [], CATEGORICAL_COLS,
@@ -111,21 +89,14 @@ print("\ncategorical recursion matches")
 
 
 # --- feature importances ------------------------------------------------------
-# sklearn reports one importance per one-hot column; this implementation reports
-# one per original attribute. Summing the dummies of a column back together is
-# the like-for-like comparison, and it is only valid because a dummy split at
-# `<= 0.5` is the same test as this implementation's `x == v`.
+# sum sklearn's per-dummy importances back to each original column
 
 from decision_tree import feature_importances  # noqa: E402
 
 
 def source_column(dummy, columns):
-    """Map a get_dummies column back to the attribute it came from.
-
-    Longest match wins, and an underscore is required before the level: the
-    dataset contains both `glyburide` and `glyburide-metformin`, so a bare
-    prefix test would fold the second into the first.
-    """
+    """Original column for a dummy. Longest match wins, so glyburide-metformin
+    is not folded into glyburide."""
     candidates = [c for c in columns
                   if dummy == c or dummy.startswith(c + "_")]
     assert candidates, f"no source column for dummy {dummy!r}"

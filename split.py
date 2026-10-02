@@ -22,5 +22,5 @@ for name, part in (("train", train), ("test", test)):
     pos = int(part[TARGET].sum())
     print(f"{name:<6} {len(part):>6,} rows  {pos:>5,} positive  ({100 * pos / len(part):5.2f}%)")
 
-# stratification should hold the rate to within a fraction of a percentage point
+# stratified, so the rates should match
 assert abs(train[TARGET].mean() - test[TARGET].mean()) < 0.005

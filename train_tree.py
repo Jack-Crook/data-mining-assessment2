@@ -1,11 +1,5 @@
-"""Tune depth, min_samples_leaf and the decision threshold on a validation slice
-carved out of the training set, for both `age` encodings.
-
-The held-out test set from split.py is not read anywhere in this file. Every
-choice made here is made on data the final numbers were not measured on.
-Tuning on test is exactly the methodological failure the Summary section would
-have to own up to.
-"""
+"""Tune max_depth, min_samples_leaf and the threshold on a validation slice of
+train, for both age encodings. Does not read test.csv."""
 
 import json
 import sys
@@ -56,10 +50,7 @@ for age_numeric in (False, True):
             threshold, f1 = best_threshold(y_val, proba)
             precision, recall, _ = prf(y_val, (proba >= threshold).astype(int))
 
-            # the same tree scored on the data it was fitted on, at the same
-            # threshold. Two curves that separate as depth grows is what
-            # overfitting looks like; the validation curve alone only shows
-            # where to stop, not why.
+            # train F1 at the same threshold, to show overfitting
             train_proba = predict_proba(tree, Xn_fit, Xc_fit)
             _, _, train_f1 = prf(y_fit, (train_proba >= threshold).astype(int))
 
@@ -102,8 +93,7 @@ for name, c in (("nominal", chosen["nominal"]), ("numeric", chosen["numeric"])):
     print(f"  {name:<8} F1 {c['val_f1']:.4f}  precision {c['val_precision']:.4f}  "
           f"recall {c['val_recall']:.4f}{mark}")
 
-# a threshold left at 0.5 is the failure mode this whole step exists to fix;
-# if tuning ever returns 0.5 something has gone wrong upstream
+# a threshold of 0.5 or F1 of 0 means tuning failed
 assert winner["threshold"] < 0.5, "tuned threshold should sit well below 0.5"
 assert winner["val_f1"] > 0.0, "tuning produced a degenerate all-negative model"
 print("\nwrote results/tuning.csv and results/tuning.json")

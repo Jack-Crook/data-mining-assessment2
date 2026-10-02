@@ -1,16 +1,5 @@
-"""Final evaluation: this implementation against sklearn's, on the held-out test
-set, at matched hyperparameters and a matched operating point.
-
-This is the only file that reads results/test.csv. Every hyperparameter and the
-decision threshold come from results/tuning.json, chosen on a validation slice
-of train in train_tree.py.
-
-Both models are scored at the *same* tuned threshold. Comparing a tuned
-threshold against sklearn's default 0.5 would credit this implementation for
-the threshold tuning rather than for the tree, and at a 9.10% positive rate
-sklearn at 0.5 predicts almost no positives at all, so the comparison would be
-meaningless in this implementation's favour.
-"""
+"""Final test-set evaluation: my tree vs sklearn at the same tuned settings and
+threshold. The only script that reads test.csv."""
 
 import json
 import sys
@@ -48,16 +37,15 @@ for name in ("nominal", "numeric"):
     print(f"depth {cfg['max_depth']}, min_samples_leaf {cfg['min_samples_leaf']}, "
           f"threshold {cfg['threshold']:.4f}")
 
-    # --- this implementation ---------------------------------------------
+    # --- my tree -----------------------------------------------------------
     t0 = time.perf_counter()
     tree = build(Xn_tr, Xc_tr, y_tr, numeric, categorical,
                  max_depth=cfg["max_depth"], min_samples_leaf=cfg["min_samples_leaf"])
     mine_fit = time.perf_counter() - t0
     mine_proba = predict_proba(tree, Xn_te, Xc_te)
 
-    # --- sklearn, same data, categoricals one-hot encoded -----------------
-    # test is reindexed onto train's dummy columns so an unseen level becomes
-    # all-zeros rather than silently shifting every column to its right
+    # --- sklearn, categoricals one-hot encoded -----------------------------
+    # align test to train's dummy columns; unseen levels become zeros
     tr_oh = pd.get_dummies(train[numeric + categorical], columns=categorical)
     te_oh = pd.get_dummies(test[numeric + categorical], columns=categorical)
     if "age" in numeric:
@@ -96,8 +84,7 @@ for name in ("nominal", "numeric"):
         np.save("results/test_proba_sklearn.npy", sk_proba)
         np.save("results/test_y.npy", y_te)
 
-        # importances are compared per original attribute, so sklearn's one-hot
-        # columns are summed back to the column they were expanded from
+        # sum sklearn's per-dummy importances back to the original column
         mine_imp = feature_importances(tree)
         sk_imp = {}
         for dummy, value in zip(tr_oh.columns, sk.feature_importances_):
@@ -124,7 +111,6 @@ for name in ("nominal", "numeric"):
 df = pd.DataFrame(results)
 df.to_csv("results/benchmark.csv", index=False)
 
-# the majority-class baseline the proposal's metrics section is arguing against
 y_te = np.load("results/test_y.npy")
 print(f"\nmajority-class baseline: accuracy {100 * (1 - y_te.mean()):.2f}%, "
       f"recall 0.0000, F1 0.0000 ({y_te.sum():,} positives never found)")

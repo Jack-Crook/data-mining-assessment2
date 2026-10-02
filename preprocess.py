@@ -1,25 +1,18 @@
-"""Pre-processing pipeline for the diabetes 130-US-hospitals dataset (3804ICT A2).
-
-Steps run in the order fixed in the implementation plan: row exclusions before the
-first-encounter dedup, so that a patient whose earliest encounter is a hospice
-discharge is represented by their next surviving encounter rather than dropped.
-
-Row counts are logged after every step; they are checked against known targets at
-the end. A mismatch means a bug in the step above it, not in the target.
-"""
+"""Clean diabetic_data.csv into results/cleaned.csv, checking row counts after
+every step against independently verified targets."""
 
 import pandas as pd
 
 DATA = "data/diabetic_data.csv"
 OUT = "results/cleaned.csv"
 
-# discharge dispositions meaning death or hospice: these patients cannot be readmitted
+# death or hospice: cannot be readmitted
 NON_READMITTABLE = [11, 13, 14, 19, 20]
 
-# no variance at all (a single distinct value across all 101,766 rows)
+# one value in every row
 ZERO_VARIANCE = ["examide", "citoglipton"]
 
-# >99.9% one value; carry no usable signal but do let a tree split on noise
+# over 99.9% one value
 NEAR_CONSTANT = [
     "acetohexamide",
     "glimepiride-pioglitazone",
@@ -39,22 +32,18 @@ steps = []
 
 
 def log(label, df):
-    """Record and print rows + positives after a pipeline step."""
+    """Print and record rows and <30 count after a step."""
     pos = int((df["readmitted"] == "<30").sum())
     steps.append((label, len(df), pos, 100 * pos / len(df)))
     print(f"{label:<45} {len(df):>7,} rows  {pos:>6,} <30  ({100 * pos / len(df):5.2f}%)")
 
 
 def group_icd9(code):
-    """Bin an ICD-9 code into one of 9 diagnosis groups (Strack et al., 2014).
-
-    V (supplementary) and E (external cause) codes are non-numeric and must be
-    branched on before any numeric comparison, or the float cast throws.
-    """
+    """Bin an ICD-9 code into one of 9 groups (Strack et al., 2014)."""
     if pd.isna(code):
         return "Other"
     code = str(code).strip()
-    if code.startswith(("V", "E")):
+    if code.startswith(("V", "E")):  # not numeric, check before the float cast
         return "Other"
     try:
         value = float(code)
@@ -79,7 +68,7 @@ def group_icd9(code):
     return "Other"
 
 
-# 1. load, collapsing '?' and real NaN into one representation
+# 1. load, treating '?' as missing
 df = pd.read_csv(
     DATA,
     na_values="?",
@@ -87,37 +76,36 @@ df = pd.read_csv(
 )
 log("0. raw", df)
 
-# 2. exclusions before dedup (see module docstring)
+# 2. drop death/hospice before dedup
 df = df[~df["discharge_disposition_id"].isin(NON_READMITTABLE)]
 log("1. drop death/hospice discharges", df)
 
-# 3. three records carry a placeholder gender
+# 3. drop placeholder gender
 df = df[df["gender"] != "Unknown/Invalid"]
 log("2. drop invalid gender", df)
 
-# 4. one row per patient. No timestamp exists; encounter_id is assumed to increase
-#    chronologically, so the minimum per patient is their first encounter.
+# 4. first encounter per patient (assumes encounter_id is chronological)
 df = df.loc[df.groupby("patient_nbr")["encounter_id"].idxmin()]
 log("3. dedup to first encounter per patient", df)
 
-# 5. identifiers were needed for the dedup, not as features
+# 5. drop ids and unused columns
 df = df.drop(columns=["encounter_id", "patient_nbr", "weight", *ZERO_VARIANCE, *NEAR_CONSTANT])
 
-# 6. missingness that is itself meaningful becomes an explicit level
+# 6. missing values become their own level
 df["medical_specialty"] = df["medical_specialty"].fillna("Unknown")
 df["payer_code"] = df["payer_code"].fillna("Unknown")
 df["max_glu_serum"] = df["max_glu_serum"].fillna("Not tested")
 df["A1Cresult"] = df["A1Cresult"].fillna("Not tested")
 
-# 7. remaining missingness is small enough to drop rather than impute
+# 7. drop the few rows still missing race or a diagnosis
 df = df.dropna(subset=["race", *DIAG_COLS])
 log("4. drop missing race/diag_1/diag_2/diag_3", df)
 
-# 8. ~700-800 distinct codes per column down to 9 groups
+# 8. ICD-9 codes to 9 groups
 for col in DIAG_COLS:
     df[col] = df[col].map(group_icd9)
 
-# 9. binary target: readmission within 30 days vs. everything else
+# 9. binary target: <30 vs everything else
 df["readmitted_binary"] = (df["readmitted"] == "<30").astype(int)
 df = df.drop(columns=["readmitted"])
 
@@ -130,7 +118,7 @@ print(f"majority-class baseline accuracy {100 * (1 - df['readmitted_binary'].mea
 print("\ndiagnosis group counts (diag_1):")
 print(df["diag_1"].value_counts().to_string())
 
-# verified independently from the raw CSV; a mismatch is a bug in this script
+# targets counted independently from the raw CSV
 TARGETS = [
     ("0. raw", 101_766, 11_357),
     ("1. drop death/hospice discharges", 99_343, 11_314),
