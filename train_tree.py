@@ -2,8 +2,8 @@
 carved out of the training set, for both `age` encodings.
 
 The held-out test set from split.py is not read anywhere in this file. Every
-choice made here is made on data the final numbers were not measured on --
-tuning on test is exactly the methodological failure the Summary section would
+choice made here is made on data the final numbers were not measured on.
+Tuning on test is exactly the methodological failure the Summary section would
 have to own up to.
 """
 

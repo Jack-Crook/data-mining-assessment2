@@ -80,7 +80,7 @@ def best_numeric_split(x, y, min_samples_leaf=1):
     # A cut between two identical values is not a real split, and a cut leaving
     # fewer than min_samples_leaf rows on a side is not a legal one. Both are
     # excluded here, inside the search, rather than by rejecting the winner
-    # afterwards -- that would turn a node into a leaf when a legal split existed.
+    # afterwards, which would turn a node into a leaf when a legal split existed.
     valid = ((x_sorted[:-1] < x_sorted[1:])
              & (n_left >= min_samples_leaf)
              & (n_right >= min_samples_leaf))
@@ -183,7 +183,7 @@ class Node:
 
     `counts` is the class distribution of the training rows that reached this
     node, not a majority label. Storing the distribution is what makes leaf
-    probabilities and a tuned decision threshold possible later -- at a 9.10%
+    probabilities and a tuned decision threshold possible later. At a 9.10%
     positive rate a majority-vote leaf predicts "not readmitted" almost
     everywhere, so the label alone would throw away the only information the
     imbalance leaves us.
@@ -260,7 +260,7 @@ def predict_proba(node, X_num, X_cat):
 
 def predict(node, X_num, X_cat, threshold=0.5):
     """Hard 0/1 prediction. The threshold is tuned on validation, not left at
-    0.5 -- see the imbalance discussion in the report."""
+    0.5. See the imbalance discussion in the report."""
     return (predict_proba(node, X_num, X_cat) >= threshold).astype(int)
 
 
@@ -272,7 +272,7 @@ def tree_depth(node):
 
 
 def count_nodes(node):
-    """Total nodes, internal and leaf -- comparable to sklearn's tree_.node_count."""
+    """Total nodes, internal and leaf, comparable to sklearn's tree_.node_count."""
     if node.is_leaf:
         return 1
     return 1 + count_nodes(node.left) + count_nodes(node.right)
@@ -332,8 +332,8 @@ def describe(node):
 def render_tree(node, max_depth=3, _prefix="", _depth=0, _lines=None):
     """Plain-text render of the top of the tree.
 
-    Only the first few levels are legible on a page -- the tuned tree has 151
-    nodes -- and the top levels are the ones carrying most of the signal anyway.
+    Only the first few levels are legible on a page (the tuned tree has 151
+    nodes), and the top levels are the ones carrying most of the signal anyway.
     Left branch is the True side of the test.
     """
     if _lines is None:

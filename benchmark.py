@@ -8,7 +8,7 @@ of train in train_tree.py.
 Both models are scored at the *same* tuned threshold. Comparing a tuned
 threshold against sklearn's default 0.5 would credit this implementation for
 the threshold tuning rather than for the tree, and at a 9.10% positive rate
-sklearn at 0.5 predicts almost no positives at all -- the comparison would be
+sklearn at 0.5 predicts almost no positives at all, so the comparison would be
 meaningless in this implementation's favour.
 """
 
@@ -130,8 +130,8 @@ print(f"\nmajority-class baseline: accuracy {100 * (1 - y_te.mean()):.2f}%, "
       f"recall 0.0000, F1 0.0000 ({y_te.sum():,} positives never found)")
 
 sel = df[df["selected"]]
-assert (sel["f1"] > 0.15).all(), "F1 collapsed on test -- threshold did not transfer"
+assert (sel["f1"] > 0.15).all(), "F1 collapsed on test: threshold did not transfer"
 assert abs(sel[sel.model == "mine"]["auc"].iloc[0]
            - sel[sel.model == "sklearn"]["auc"].iloc[0]) < 0.02, \
-    "the two implementations disagree on test -- investigate before reporting"
+    "the two implementations disagree on test: investigate before reporting"
 print("\nwrote results/benchmark.csv")

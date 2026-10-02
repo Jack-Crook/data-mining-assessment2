@@ -72,7 +72,7 @@ def threshold_sweep(y_true, proba):
     """Precision/recall/F1 at every threshold the model can actually produce.
 
     A tree emits one probability per leaf, so the distinct leaf probabilities
-    are the complete candidate set -- sweeping a fixed grid would either miss
+    are the complete candidate set. Sweeping a fixed grid would either miss
     achievable operating points or waste work on identical ones.
     """
     rows = []

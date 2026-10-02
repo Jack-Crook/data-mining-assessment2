@@ -5,7 +5,7 @@ the saved test probabilities); fits nothing, so the test set is not re-touched.
 
 Palette is the three-slot categorical set validated for all-pairs separation
 under deuteranopia and tritanopia. Every series is also direct-labelled, so
-identity never rests on colour alone -- which matters for a report that may be
+identity never rests on colour alone, which matters for a report that may be
 printed in greyscale.
 """
 
@@ -99,7 +99,7 @@ ax.annotate(f"selected depth {best_depth}", (best_depth, ax.get_ylim()[0]),
             xytext=(4, 8), textcoords="offset points", color=INK_2, fontsize=9)
 ax.set_xlabel("maximum depth")
 ax.set_ylabel("F1 (positive class)")
-ax.set_title("Depth vs. F1 — the gap between the curves is the overfitting",
+ax.set_title("Depth vs. F1: the gap between the curves is the overfitting",
              color=INK, fontsize=12, pad=10)
 ax.set_xlim(1, tuning_grid["max_depth"].max() + 3)
 fig.tight_layout()
@@ -128,7 +128,7 @@ ax.annotate(f"tuned threshold {cfg['threshold']:.3f}\n(chosen on validation)",
             (cfg["threshold"], 0.95), xytext=(8, 0), textcoords="offset points",
             color=INK_2, fontsize=9, va="top")
 ax.axvline(0.5, color=INK_2, linewidth=1, linestyle=":", zorder=0)
-ax.annotate("default 0.5 —\nno positives predicted", (0.5, 0.62), xytext=(-8, 0),
+ax.annotate("default 0.5:\nno positives predicted", (0.5, 0.62), xytext=(-8, 0),
             textcoords="offset points", color=INK_2, fontsize=9, va="center",
             ha="right")
 ax.set_xlabel("decision threshold")
@@ -161,7 +161,7 @@ ax.set_xlabel("recall")
 ax.set_ylabel("precision")
 ax.set_xlim(0, 1)
 ax.set_ylim(0, max(0.45, BASE_RATE * 4))
-ax.set_title("Precision-recall on test — the two implementations coincide",
+ax.set_title("Precision-recall on test: the two implementations coincide",
              color=INK, fontsize=12, pad=10)
 fig.tight_layout()
 fig.savefig("figures/precision_recall.png", dpi=200)
@@ -169,7 +169,7 @@ plt.close(fig)
 
 
 # --- Tables -------------------------------------------------------------------
-print("Table 2 — held-out test set, both models at the tuned threshold\n")
+print("Table 2: held-out test set, both models at the tuned threshold\n")
 cols = ["age", "model", "nodes", "depth", "accuracy", "precision", "recall",
         "f1", "auc", "fit_seconds"]
 print(benchmark[cols].to_string(index=False,
@@ -179,7 +179,7 @@ print(benchmark[cols].to_string(index=False,
 print(f"\n  majority-class baseline: accuracy {100 * (1 - BASE_RATE):.2f}%, "
       f"precision 0.0000, recall 0.0000, F1 0.0000")
 
-print("\n\nTable 3 — age encoding, validation and test\n")
+print("\n\nTable 3: age encoding, validation and test\n")
 for name in ("nominal", "numeric"):
     v = tuning[name]
     t = benchmark[(benchmark["age"] == name) & (benchmark["model"] == "mine")].iloc[0]
@@ -187,7 +187,7 @@ for name in ("nominal", "numeric"):
           f"test F1 {t['f1']:.4f}  precision {t['precision']:.4f}  recall {t['recall']:.4f}")
 print(f"\n  difference in validation F1: "
       f"{abs(tuning['numeric']['val_f1'] - tuning['nominal']['val_f1']):.4f} "
-      f"— within noise, not a result")
+      f"(within noise, not a result)")
 
 print("\nwrote figures/confusion_matrices.png, depth_vs_f1.png, "
       "threshold_sweep.png, precision_recall.png")
@@ -296,7 +296,7 @@ fig.tight_layout()
 fig.savefig("figures/tree_top_levels.png", dpi=200)
 plt.close(fig)
 
-print("\n\nTable 4 — feature importances (top 12)\n")
+print("\n\nTable 4: feature importances (top 12)\n")
 print(pd.read_csv("results/importances.csv").head(12).to_string(
     index=False, formatters={"mine": "{:.4f}".format, "sklearn": "{:.4f}".format}))
 

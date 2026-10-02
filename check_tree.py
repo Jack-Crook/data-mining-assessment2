@@ -4,9 +4,9 @@ check_split.py established that a single split matches sklearn to 1e-9. This
 checks that recursing on it produces the same *tree*: same shape, same metrics,
 at matched hyperparameters, before any optimisation work starts.
 
-The two searches consider the same candidate set at every node -- a one-hot
+The two searches consider the same candidate set at every node (a one-hot
 dummy tested at `<= 0.5` is precisely the one-vs-rest test `x == v`, and the
-numeric sweeps are identical -- so agreement should be exact, not approximate.
+numeric sweeps are identical), so agreement should be exact, not approximate.
 Tie-breaking between equal-gain splits is the one place they may legitimately
 diverge.
 """
